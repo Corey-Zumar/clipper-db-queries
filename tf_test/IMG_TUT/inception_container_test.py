@@ -19,8 +19,6 @@ if __name__ == "__main__":
 	num_images = sys.argv[3]
 
 	labels_names_info = load_labels_names_info(labels_names_path)
-	for i in range(0,10):
-		print(labels_names_info[i])
 	np.random.shuffle(labels_names_info)
 
 	image_file_name, label = labels_names_info[0]
