@@ -22,10 +22,23 @@ class TfInceptionContainer(rpc.ModelContainerBase):
 
     def __init__(self, checkpoint_path):
         self.checkpoint_path = checkpoint_path
+        self.sess = tf.Session("", tf.Graph())
+        with self.sess.graph.as_default():
+            self.inputs = tf.placeholder(tf.float32, (None, image_size, image_size, 3))
+            with slim.arg_scope(inception_v3.inception_v3_arg_scope()):
+                logits, _ = inception_v3.inception_v3(
+                    self.inputs, num_classes=1001, is_training=False)
+
+            self.all_probabilities = tf.nn.softmax(logits)
+
+            init_fn = slim.assign_from_checkpoint_fn(
+                self.checkpoint_path, slim.get_model_variables("InceptionV3"))
+            init_fn(self.sess)
+
 
     def predict_bytes(self, inputs):
         outputs = []
-        with tf.Graph().as_default():
+        with self.sess.graph.as_default():
             decoded_images = [tf.image.decode_jpeg(input_image.tobytes(), channels=3) for input_image in inputs]
             preprocessed_images = [
                 inception_preprocessing.preprocess_image(
@@ -34,28 +47,13 @@ class TfInceptionContainer(rpc.ModelContainerBase):
                     image_size,
                     is_training=False) for decoded_image in decoded_images]
 
-            with slim.arg_scope(inception_v3.inception_v3_arg_scope()):
-                logits, _ = inception_v3.inception_v3(
-                    preprocessed_images, num_classes=1001, is_training=False)
-
-            all_probabilities = tf.nn.softmax(logits)
-            init_fn = slim.assign_from_checkpoint_fn(
-                self.checkpoint_path, slim.get_model_variables("InceptionV3"))
-
-            with tf.Session() as sess:
-                init_fn(sess)
-                decoded_images, all_probabilities = sess.run(
-                    [decoded_images, all_probabilities])
-
-                for input_probabilities in all_probabilities:
-                    sorted_inds = [i[0] for i in sorted(
-                        enumerate(-input_probabilities), key=lambda x:x[1])]
-                    outputs.append(str(sorted_inds[0]))
-
-                    names = imagenet.create_readable_names_for_imagenet_labels()
-                    for i in range(5):
-                        index = sorted_inds[i]
-                        print('Probability %0.2f%% => [%s]' % (input_probabilities[index] * 100, names[index]))
+        processed_inputs = self.sess.run(preprocessed_images)
+        all_probabilities = self.sess.run([self.all_probabilities], feed_dict={self.inputs: processed_inputs})
+        for input_probabilities in all_probabilities:
+            input_probabilities = input_probabilities[0]
+            sorted_inds = [i[0] for i in sorted(
+                enumerate(-input_probabilities), key=lambda x:x[1])]
+            outputs.append(str(sorted_inds[0]))
 
         return outputs
 
