@@ -4,10 +4,15 @@ import numpy as np
 import os
 import sys
 import base64
+import time
 
 cur_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Change this to the relative path of your local copy of tf slim
 sys.path.insert(0, os.path.abspath('%s/../../../tf_models/slim/' % cur_dir))
-sys.path.insert(0, os.path.abspath('%s/../../containers/python' % cur_dir))
+
+# Change this to the relative path of tf slim within your docker container
+sys.path.insert(0, os.path.abspath('/tfslim'))
 
 import rpc
 from nets import inception_v3
@@ -28,9 +33,7 @@ class TfInceptionContainer(rpc.ModelContainerBase):
             with slim.arg_scope(inception_v3.inception_v3_arg_scope()):
                 logits, _ = inception_v3.inception_v3(
                     self.inputs, num_classes=1001, is_training=False)
-
             self.all_probabilities = tf.nn.softmax(logits)
-
             init_fn = slim.assign_from_checkpoint_fn(
                 self.checkpoint_path, slim.get_model_variables("InceptionV3"))
             init_fn(self.sess)
@@ -49,12 +52,12 @@ class TfInceptionContainer(rpc.ModelContainerBase):
 
         processed_inputs = self.sess.run(preprocessed_images)
         all_probabilities = self.sess.run([self.all_probabilities], feed_dict={self.inputs: processed_inputs})
-        for input_probabilities in all_probabilities:
-            input_probabilities = input_probabilities[0]
+        for input_probabilities in all_probabilities[0]:
             sorted_inds = [i[0] for i in sorted(
                 enumerate(-input_probabilities), key=lambda x:x[1])]
             outputs.append(str(sorted_inds[0]))
 
+        print(outputs)
         return outputs
 
 
@@ -74,12 +77,21 @@ if __name__ == "__main__":
             "ERROR: CLIPPER_MODEL_VERSION environment variable must be set",
             file=sys.stdout)
         sys.exit(1)
+    try:
+        model_checkpoint_path = os.environ["CLIPPER_MODEL_CHECKPOINT_PATH"]
+    except KeyError:
+        print(
+            "ERROR: CLIPPER_MODEL_CHECKPOINT_PATH environment variable must be set",
+            file=sys.stdout)
+        sys.exit(1)        
 
     ip = "127.0.0.1"
     if "CLIPPER_IP" in os.environ:
         ip = os.environ["CLIPPER_IP"]
     else:
         print("Connecting to Clipper on localhost")
+
+    print("CLIPPER IP: {}".format(ip))
 
     port = 7000
     if "CLIPPER_PORT" in os.environ:
@@ -88,7 +100,6 @@ if __name__ == "__main__":
         print("Connecting to Clipper with default port: 7000")
 
     input_type = "bytes"
-    model_checkpoint_path = os.environ["CLIPPER_MODEL_CHECKPOINT_PATH"]
-    model = TfInceptionContainer(model_checkpoint_path)
+    container = TfInceptionContainer(model_checkpoint_path)
     rpc_service = rpc.RPCService()
-    rpc_service.start(model, ip, port, model_name, model_version, input_type)
+    rpc_service.start(container, ip, port, model_name, model_version, input_type)

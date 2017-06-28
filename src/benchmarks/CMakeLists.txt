@@ -21,3 +21,15 @@ target_link_libraries(rpcbench clipper cxxopts)
 
 add_executable(rpctest src/rpc_protocol_test.cpp)
 target_link_libraries(rpctest clipper cxxopts)
+
+##################################
+# ImgNet DB Queries Benchmark
+
+add_executable(imgnet_db_bench src/imgnet_db_benchmark.cpp)
+target_link_libraries(imgnet_db_bench clipper cxxopts boost)
+
+##################################
+# IMDB Reviews DB Queries Benchmark
+
+add_executable(imdb_reviews_db_bench src/imdb_reviews_db_benchmark.cpp)
+target_link_libraries(imdb_reviews_db_bench clipper cxxopts boost)
